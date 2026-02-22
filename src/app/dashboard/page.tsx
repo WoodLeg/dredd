@@ -1,5 +1,4 @@
 import { ViewTransition } from "react";
-import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getPollsByOwner, getVotesForPoll, getCachedResults, setCachedResults } from "@/lib/store";
@@ -13,10 +12,11 @@ export const metadata = {
 };
 
 export default async function DashboardPage() {
+  // Middleware guarantees authentication — this only fetches the session for user.id
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session) {
-    redirect("/login?callbackUrl=/dashboard");
+    throw new Error("Unreachable: middleware should have redirected unauthenticated request");
   }
 
   const entries = await getPollsByOwner(session.user.id);
