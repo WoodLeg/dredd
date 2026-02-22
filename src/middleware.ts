@@ -5,7 +5,10 @@ const PUBLIC_PATHS = new Set(["/", "/login", "/le-code"]);
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
-  // /poll/* routes are handled by per-page auth checks
+  // /poll/* routes are exempt — each page handles its own auth:
+  //   /poll/[id]         → auth required (redirects to login)
+  //   /poll/[id]/admin   → auth + owner check
+  //   /poll/[id]/results → intentionally public
   if (pathname.startsWith("/poll/")) return true;
   // API routes have their own guards
   if (pathname.startsWith("/api/")) return true;
