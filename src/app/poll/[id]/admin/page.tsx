@@ -2,7 +2,7 @@ import { ViewTransition } from "react";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { getPoll } from "@/lib/store";
+import { getPollMeta, getVoterCount } from "@/lib/store";
 import { DreddFullPage } from "@/components/ui/dredd-full-page";
 import { AdminPageClient } from "./admin-page-client";
 
@@ -15,7 +15,7 @@ export default async function AdminPage({ params }: AdminPageProps) {
 
   const [session, poll] = await Promise.all([
     auth.api.getSession({ headers: await headers() }),
-    getPoll(id),
+    getPollMeta(id),
   ]);
 
   if (!session) {
@@ -38,10 +38,12 @@ export default async function AdminPage({ params }: AdminPageProps) {
     );
   }
 
+  const voterCount = await getVoterCount(id);
+
   const pollData = {
     id: poll.id,
     question: poll.question,
-    voterCount: poll.votes.length,
+    voterCount,
     isClosed: poll.isClosed,
   };
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { nanoid } from "nanoid";
 import { headers } from "next/headers";
 import { createPollSchema, voteSchema, closePollSchema } from "./schemas";
-import { createPoll, getPoll, addVote, closePoll } from "./store";
+import { createPoll, getPollMeta, addVote, closePoll } from "./store";
 import { auth, type Session } from "./auth";
 import { GRADES } from "./grades";
 import type { ActionResult, Grade, Poll } from "./types";
@@ -55,7 +55,7 @@ export async function createPollAction(
     isClosed: false,
   };
 
-  const storeResult = createPoll(poll);
+  const storeResult = await createPoll(poll);
   if (storeResult.error) {
     return { success: false, code: "capacity", error: storeResult.error };
   }
@@ -78,7 +78,7 @@ export async function submitVoteAction(
 
   const { grades } = result.data;
 
-  const poll = getPoll(pollId);
+  const poll = await getPollMeta(pollId);
   if (!poll) {
     return { success: false, code: "not_found", error: "Dossier introuvable dans les archives" };
   }
@@ -101,7 +101,7 @@ export async function submitVoteAction(
     return { success: false, code: "validation", error: "Mention pour un suspect non répertorié" };
   }
 
-  const storeResult = addVote(pollId, {
+  const storeResult = await addVote(pollId, {
     voterId: session.user.id,
     voterDisplayName: session.user.name ?? "Citoyen anonyme",
     grades: sanitizedGrades,
@@ -127,10 +127,10 @@ export async function closePollAction(
   }
 
   const { pollId } = result.data;
-  const storeResult = closePoll(pollId, session.user.id);
+  const storeResult = await closePoll(pollId, session.user.id);
 
   if (!storeResult.success) {
-    return { success: false, code: storeResult.code === "not_found" ? "not_found" : "forbidden", error: storeResult.error };
+    return { success: false, code: storeResult.code, error: storeResult.error };
   }
 
   return { success: true, data: { closed: true } };

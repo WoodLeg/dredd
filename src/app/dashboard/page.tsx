@@ -2,7 +2,7 @@ import { ViewTransition } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { getPollsByOwner, setCachedResults } from "@/lib/store";
+import { getPollsByOwner, getVotesForPoll, getCachedResults, setCachedResults } from "@/lib/store";
 import { computeResults } from "@/lib/majority-judgment";
 import { DreddFullPage } from "@/components/ui/dredd-full-page";
 import { DashboardPageClient } from "./dashboard-page-client";
@@ -20,9 +20,9 @@ export default async function DashboardPage() {
     redirect("/login?callbackUrl=/dashboard");
   }
 
-  const polls = getPollsByOwner(session.user.id);
+  const entries = await getPollsByOwner(session.user.id);
 
-  if (polls.length === 0) {
+  if (entries.length === 0) {
     return (
       <ViewTransition>
         <DreddFullPage
@@ -34,37 +34,41 @@ export default async function DashboardPage() {
     );
   }
 
-  const dashboardPolls: DashboardPollData[] = polls.map((poll) => {
-    let winner: DashboardPollData["winner"] = undefined;
-    if (poll.isClosed && poll.votes.length > 0) {
-      let results: PollResults;
-      if (poll.cachedResults) {
-        results = poll.cachedResults;
-      } else {
-        results = computeResults(poll.id, poll.question, poll.candidates, poll.votes);
-        setCachedResults(poll.id, results);
+  const dashboardPolls: DashboardPollData[] = await Promise.all(
+    entries.map(async ({ meta, voterCount }) => {
+      let winner: DashboardPollData["winner"] = undefined;
+      if (meta.isClosed && voterCount > 0) {
+        let results: PollResults;
+        const cached = await getCachedResults(meta.id);
+        if (cached) {
+          results = cached;
+        } else {
+          const votes = await getVotesForPoll(meta.id);
+          results = computeResults(meta.id, meta.question, meta.candidates, votes);
+          await setCachedResults(meta.id, results);
+        }
+        const top = results.ranking[0];
+        if (top) {
+          winner = {
+            name: top.name,
+            medianGrade: top.medianGrade,
+            gradeDistribution: top.gradeDistribution,
+          };
+        }
       }
-      const top = results.ranking[0];
-      if (top) {
-        winner = {
-          name: top.name,
-          medianGrade: top.medianGrade,
-          gradeDistribution: top.gradeDistribution,
-        };
-      }
-    }
 
-    return {
-      id: poll.id,
-      question: poll.question,
-      candidateCount: poll.candidates.length,
-      voterCount: poll.votes.length,
-      isClosed: poll.isClosed,
-      createdAt: poll.createdAt,
-      closedAt: poll.closedAt,
-      winner,
-    };
-  });
+      return {
+        id: meta.id,
+        question: meta.question,
+        candidateCount: meta.candidates.length,
+        voterCount,
+        isClosed: meta.isClosed,
+        createdAt: meta.createdAt,
+        closedAt: meta.closedAt,
+        winner,
+      };
+    })
+  );
 
   return (
     <ViewTransition>

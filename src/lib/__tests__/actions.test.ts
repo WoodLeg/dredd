@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { _resetForTesting, getPoll } from "../store";
 
 // Mock next/headers
 vi.mock("next/headers", () => ({
@@ -20,38 +19,59 @@ vi.mock("../auth", () => ({
   },
 }));
 
+// Mock store — isolate actions from Redis
+const mockCreatePoll = vi.fn();
+const mockGetPollMeta = vi.fn();
+const mockAddVote = vi.fn();
+const mockClosePoll = vi.fn();
+
+vi.mock("../store", () => ({
+  createPoll: (...args: unknown[]) => mockCreatePoll(...args),
+  getPollMeta: (...args: unknown[]) => mockGetPollMeta(...args),
+  addVote: (...args: unknown[]) => mockAddVote(...args),
+  closePoll: (...args: unknown[]) => mockClosePoll(...args),
+}));
+
 // Import after mocks are set up
 const { createPollAction, submitVoteAction, closePollAction } = await import("../actions");
 const { auth } = await import("../auth");
 
 beforeEach(() => {
-  _resetForTesting();
   vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+  mockCreatePoll.mockReset();
+  mockGetPollMeta.mockReset();
+  mockAddVote.mockReset();
+  mockClosePoll.mockReset();
+
+  // Default mock implementations
+  mockCreatePoll.mockResolvedValue({ poll: {} });
+  mockGetPollMeta.mockResolvedValue(undefined);
+  mockAddVote.mockResolvedValue({ success: true });
+  mockClosePoll.mockResolvedValue({ success: true });
 });
 
 describe("createPollAction", () => {
   const validInput = {
-    question: "Où manger ?",
+    question: "Ou manger ?",
     candidates: [{ value: "Pizza" }, { value: "Sushi" }],
   };
 
   it("creates a poll successfully", async () => {
+    mockCreatePoll.mockResolvedValueOnce({ poll: { id: "abc1234567" } });
+
     const result = await createPollAction(validInput);
     expect(result.success).toBe(true);
     if (!result.success) throw new Error("Expected success");
     expect(result.data.id).toBeDefined();
     expect(result.data.id.length).toBe(10);
-  });
 
-  it("stores the poll with the session user as owner", async () => {
-    const result = await createPollAction(validInput);
-    expect(result.success).toBe(true);
-    if (!result.success) throw new Error("Expected success");
-    const poll = getPoll(result.data.id);
-    expect(poll).toBeDefined();
-    expect(poll!.question).toBe("Où manger ?");
-    expect(poll!.ownerId).toBe("test-user-id");
-    expect(poll!.ownerDisplayName).toBe("Juge Test");
+    // Verify createPoll was called with correct shape
+    expect(mockCreatePoll).toHaveBeenCalledOnce();
+    const pollArg = mockCreatePoll.mock.calls[0][0];
+    expect(pollArg.question).toBe("Ou manger ?");
+    expect(pollArg.candidates).toEqual(["Pizza", "Sushi"]);
+    expect(pollArg.ownerId).toBe("test-user-id");
+    expect(pollArg.ownerDisplayName).toBe("Juge Test");
   });
 
   it("returns field errors for invalid input", async () => {
@@ -74,26 +94,31 @@ describe("createPollAction", () => {
 });
 
 describe("submitVoteAction", () => {
-  let pollId: string;
+  const pollId = "test-poll-id";
 
-  beforeEach(async () => {
-    const result = await createPollAction({
+  beforeEach(() => {
+    mockGetPollMeta.mockResolvedValue({
+      id: pollId,
       question: "Test?",
-      candidates: [{ value: "Alice" }, { value: "Bob" }],
+      candidates: ["Alice", "Bob"],
+      ownerId: "test-user-id",
+      ownerDisplayName: "Juge Test",
+      createdAt: Date.now(),
+      isClosed: false,
     });
-    expect(result.success).toBe(true);
-    if (!result.success) throw new Error("Setup failed");
-    pollId = result.data.id;
   });
 
   it("submits a vote successfully", async () => {
+    mockAddVote.mockResolvedValueOnce({ success: true });
     const result = await submitVoteAction(pollId, {
       grades: { Alice: "excellent", Bob: "bien" },
     });
     expect(result.success).toBe(true);
+    expect(mockAddVote).toHaveBeenCalledOnce();
   });
 
   it("returns error for non-existent poll", async () => {
+    mockGetPollMeta.mockResolvedValueOnce(undefined);
     const result = await submitVoteAction("non-existent", {
       grades: { Alice: "excellent" },
     });
@@ -124,11 +149,13 @@ describe("submitVoteAction", () => {
   });
 
   it("returns error for duplicate voter", async () => {
-    await submitVoteAction(pollId, {
-      grades: { Alice: "excellent", Bob: "bien" },
+    mockAddVote.mockResolvedValueOnce({
+      success: false,
+      code: "duplicate_vote",
+      error: "Déposition déjà enregistrée sous ce matricule",
     });
     const result = await submitVoteAction(pollId, {
-      grades: { Alice: "bien", Bob: "excellent" },
+      grades: { Alice: "excellent", Bob: "bien" },
     });
     expect(result.success).toBe(false);
     if (result.success) throw new Error("Expected failure");
@@ -147,22 +174,13 @@ describe("submitVoteAction", () => {
 });
 
 describe("closePollAction", () => {
-  let pollId: string;
-
-  beforeEach(async () => {
-    const result = await createPollAction({
-      question: "Test?",
-      candidates: [{ value: "Alice" }, { value: "Bob" }],
-    });
-    expect(result.success).toBe(true);
-    if (!result.success) throw new Error("Setup failed");
-    pollId = result.data.id;
-  });
+  const pollId = "test-poll-id";
 
   it("closes a poll successfully", async () => {
+    mockClosePoll.mockResolvedValueOnce({ success: true });
     const result = await closePollAction({ pollId });
     expect(result.success).toBe(true);
-    expect(getPoll(pollId)!.isClosed).toBe(true);
+    expect(mockClosePoll).toHaveBeenCalledWith(pollId, "test-user-id");
   });
 
   it("returns field errors for invalid input", async () => {
@@ -176,6 +194,11 @@ describe("closePollAction", () => {
     vi.mocked(auth.api.getSession).mockResolvedValueOnce({
       user: { id: "other-user", name: "Other", email: "other@test.com" },
       session: { id: "s2" },
+    });
+    mockClosePoll.mockResolvedValueOnce({
+      success: false,
+      code: "forbidden",
+      error: "Identification Juge en Chef invalide",
     });
     const result = await closePollAction({ pollId });
     expect(result.success).toBe(false);

@@ -65,6 +65,7 @@ export interface DashboardPollData {
 export type ActionErrorCode =
   | "unauthenticated"
   | "forbidden"
+  | "already_closed"
   | "duplicate_vote"
   | "not_found"
   | "closed"

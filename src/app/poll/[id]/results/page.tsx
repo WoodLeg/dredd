@@ -1,7 +1,7 @@
 import { cache, ViewTransition } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getPoll, setCachedResults } from "@/lib/store";
+import { getPoll, getCachedResults, setCachedResults } from "@/lib/store";
 import { computeResults } from "@/lib/majority-judgment";
 import { DreddFullPage } from "@/components/ui/dredd-full-page";
 import { ResultsPageClient } from "./results-page-client";
@@ -16,7 +16,7 @@ export async function generateMetadata(
   { params }: ResultsPageProps
 ): Promise<Metadata> {
   const { id } = await params;
-  const poll = getCachedPoll(id);
+  const poll = await getCachedPoll(id);
 
   return {
     title: poll ? `Verdict : ${poll.question} — Dredd` : "Dossier introuvable — Dredd",
@@ -36,7 +36,7 @@ export async function generateMetadata(
 
 export default async function ResultsPage({ params }: ResultsPageProps) {
   const { id } = await params;
-  const poll = getCachedPoll(id);
+  const poll = await getCachedPoll(id);
 
   if (!poll) {
     notFound();
@@ -46,15 +46,16 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
     return <ViewTransition><ResultsNotReady id={id} /></ViewTransition>;
   }
 
-  const results = poll.cachedResults ?? computeResults(
+  const cached = await getCachedResults(id);
+  const results = cached ?? computeResults(
     poll.id,
     poll.question,
     poll.candidates,
     poll.votes
   );
 
-  if (!poll.cachedResults) {
-    setCachedResults(id, results);
+  if (!cached) {
+    await setCachedResults(id, results);
   }
 
   return (

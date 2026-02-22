@@ -83,7 +83,7 @@ export async function POST(request: Request): Promise<Response> {
     isClosed: false,
   };
 
-  const createResult = createPoll(poll);
+  const createResult = await createPoll(poll);
   if (createResult.error) {
     return NextResponse.json({ error: createResult.error }, { status: 500 });
   }
@@ -99,12 +99,12 @@ export async function POST(request: Request): Promise<Response> {
       voterDisplayName: `Voter ${i}`,
       grades,
     };
-    const result = addVote(id, vote);
+    const result = await addVote(id, vote);
     if (result.success) votesCreated++;
   }
 
   if (close) {
-    closePoll(id, ownerId);
+    await closePoll(id, ownerId);
   }
 
   return NextResponse.json({ pollId: id, ownerId, votesCreated });

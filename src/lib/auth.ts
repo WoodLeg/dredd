@@ -1,8 +1,21 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
+import { redis } from "./redis";
+
+function resolveBaseURL(): string {
+  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3999";
+}
 
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL,
+  baseURL: resolveBaseURL(),
+
+  trustedOrigins: [
+    "http://localhost:3999",
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    ...(process.env.NEXT_PUBLIC_APP_URL ? [process.env.NEXT_PUBLIC_APP_URL] : []),
+  ],
 
   session: {
     expiresIn: 60 * 60 * 24, // 24 hours
@@ -21,11 +34,26 @@ export const auth = betterAuth({
     },
   },
 
-  // Dev-only credentials login for E2E testing
-  // Double-guard: both NODE_ENV and explicit flag must be set
+  secondaryStorage: {
+    get: async (key) => await redis.get(`auth:${key}`),
+    set: async (key, value, ttl) => {
+      if (ttl) {
+        await redis.set(`auth:${key}`, value, { ex: ttl });
+      } else {
+        await redis.set(`auth:${key}`, value);
+      }
+    },
+    delete: async (key) => {
+      await redis.del(`auth:${key}`);
+    },
+  },
+
+  // Credentials login for E2E testing and preview deployments
+  // Double guard: VERCEL_ENV blocks production even if ENABLE_TEST_AUTH leaks.
+  // Falls back to NODE_ENV for non-Vercel environments (local dev).
   emailAndPassword: {
     enabled:
-      process.env.NODE_ENV !== "production" &&
+      (process.env.VERCEL_ENV ?? process.env.NODE_ENV) !== "production" &&
       process.env.ENABLE_TEST_AUTH === "true",
   },
 
