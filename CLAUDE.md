@@ -36,7 +36,7 @@ e2e/                # Playwright E2E tests
 - **In-memory store** (`src/lib/store.ts`) — no database, state lives in server memory
 - **Path alias**: `@/*` maps to `./src/*`
 - **French UI** — all user-facing text is in French, using a **dystopian / Judge Dredd / Mega-City One lexical field** (see Lexical Conventions below)
-- **Github** — No remote branches for now, only local
+- **GitHub** — remote at `origin` (GitHub), feature branches + PRs
 
 ## Testing
 
