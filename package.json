@@ -14,7 +14,12 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@opentelemetry/api-logs": "^0.212.0",
+    "@opentelemetry/instrumentation": "^0.212.0",
+    "@opentelemetry/sdk-logs": "^0.212.0",
     "@react-aria/interactions": "^3.27.0",
+    "@upstash/redis": "^1.36.2",
+    "@vercel/otel": "^2.1.1",
     "better-auth": "^1.4.18",
     "motion": "^12.34.0",
     "nanoid": "^5.1.6",

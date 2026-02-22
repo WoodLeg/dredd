@@ -1,8 +1,20 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 
+function resolveBaseURL(): string {
+  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3999";
+}
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL,
+  baseURL: resolveBaseURL(),
+
+  trustedOrigins: [
+    "http://localhost:3999",
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    ...(process.env.NEXT_PUBLIC_APP_URL ? [process.env.NEXT_PUBLIC_APP_URL] : []),
+  ],
 
   session: {
     expiresIn: 60 * 60 * 24, // 24 hours
@@ -21,11 +33,9 @@ export const auth = betterAuth({
     },
   },
 
-  // Dev-only credentials login for E2E testing
-  // Double-guard: both NODE_ENV and explicit flag must be set
+  // Credentials login for E2E testing and preview deployments
   emailAndPassword: {
     enabled:
-      process.env.NODE_ENV !== "production" &&
       process.env.ENABLE_TEST_AUTH === "true",
   },
 
