@@ -19,8 +19,8 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
-  // Only gate navigation requests — server actions/fetches have their own auth
-  if (request.method !== "GET") {
+  // Server actions use POST and validate sessions independently via getRequiredSession()
+  if (request.method === "POST") {
     return NextResponse.next();
   }
 
