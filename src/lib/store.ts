@@ -12,7 +12,7 @@ function votersKey(id: string): string { return `poll:${id}:voters`; }
 function resultsKey(id: string): string { return `poll:${id}:results`; }
 function ownerPollsKey(ownerId: string): string { return `owner:${ownerId}:polls`; }
 
-// --- Serialization helpers ---
+// --- Types & assembly ---
 
 interface PollHash {
   question: string;
@@ -24,30 +24,6 @@ interface PollHash {
   closedAt?: string;
   [key: string]: unknown;
 }
-
-function serializeVote(vote: Vote): string {
-  return JSON.stringify(vote);
-}
-
-function deserializeVote(raw: string): Vote {
-  return JSON.parse(raw) as Vote;
-}
-
-function assemblePoll(id: string, meta: PollHash, votes: string[]): Poll {
-  return {
-    id,
-    question: meta.question,
-    candidates: JSON.parse(meta.candidates) as string[],
-    votes: votes.map(deserializeVote),
-    createdAt: Number(meta.createdAt),
-    ownerId: meta.ownerId,
-    ownerDisplayName: meta.ownerDisplayName,
-    isClosed: meta.isClosed === "true",
-    closedAt: meta.closedAt ? Number(meta.closedAt) : undefined,
-  };
-}
-
-// --- Lightweight metadata type (no votes loaded) ---
 
 export interface PollMeta {
   id: string;
@@ -71,6 +47,17 @@ function assemblePollMeta(id: string, meta: PollHash): PollMeta {
     isClosed: meta.isClosed === "true",
     closedAt: meta.closedAt ? Number(meta.closedAt) : undefined,
   };
+}
+
+function assemblePoll(id: string, meta: PollHash, votes: string[]): Poll {
+  return {
+    ...assemblePollMeta(id, meta),
+    votes: votes.map((v) => JSON.parse(v) as Vote),
+  };
+}
+
+function isEvalResult(v: unknown): v is [number, string] {
+  return Array.isArray(v) && v.length === 2 && typeof v[0] === "number" && typeof v[1] === "string";
 }
 
 // --- Store functions ---
@@ -98,10 +85,12 @@ export async function createPoll(poll: Poll): Promise<CreatePollResult> {
 }
 
 export async function getPoll(id: string): Promise<Poll | undefined> {
-  const meta = await redis.hgetall<PollHash>(pollKey(id));
+  const pipe = redis.pipeline();
+  pipe.hgetall(pollKey(id));
+  pipe.lrange(votesKey(id), 0, -1);
+  const [meta, rawVotes] = (await pipe.exec()) as [PollHash | null, string[]];
   if (!meta || !meta.question) return undefined;
-  const rawVotes = await redis.lrange<string>(votesKey(id), 0, -1);
-  return assemblePoll(id, meta, rawVotes);
+  return assemblePoll(id, meta, rawVotes ?? []);
 }
 
 export async function getPollMeta(id: string): Promise<PollMeta | undefined> {
@@ -118,11 +107,6 @@ export async function hasVoted(pollId: string, voterId: string): Promise<boolean
   return await redis.sismember(votersKey(pollId), voterId) === 1;
 }
 
-export async function validateOwner(pollId: string, userId: string): Promise<boolean> {
-  const ownerId = await redis.hget<string>(pollKey(pollId), "ownerId");
-  return ownerId === userId;
-}
-
 export type AddVoteError = "not_found" | "capacity" | "closed" | "duplicate_vote";
 
 export type AddVoteResult =
@@ -137,13 +121,14 @@ const ADD_VOTE_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export async function addVote(pollId: string, vote: Vote): Promise<AddVoteResult> {
-  const result = await redis.eval(
+  const raw = await redis.eval(
     ADD_VOTE_SCRIPT,
     [pollKey(pollId), votersKey(pollId), votesKey(pollId), resultsKey(pollId)],
-    [vote.voterId, serializeVote(vote), String(MAX_VOTES_PER_POLL)]
-  ) as [number, string];
+    [vote.voterId, JSON.stringify(vote), String(MAX_VOTES_PER_POLL)]
+  );
 
-  const [status, code] = result;
+  if (!isEvalResult(raw)) throw new Error("Unexpected addVote eval result shape");
+  const [status, code] = raw;
   if (status === 1) return { success: true };
 
   return {
@@ -176,13 +161,14 @@ const CLOSE_POLL_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export async function closePoll(pollId: string, userId: string): Promise<ClosePollResult> {
-  const result = await redis.eval(
+  const raw = await redis.eval(
     CLOSE_POLL_SCRIPT,
     [pollKey(pollId)],
     [userId, String(Date.now())]
-  ) as [number, string];
+  );
 
-  const [status, code] = result;
+  if (!isEvalResult(raw)) throw new Error("Unexpected closePoll eval result shape");
+  const [status, code] = raw;
   if (status === 1) return { success: true };
 
   return {
@@ -192,24 +178,34 @@ export async function closePoll(pollId: string, userId: string): Promise<ClosePo
   };
 }
 
-export async function getPollsByOwner(ownerId: string): Promise<Poll[]> {
+export interface OwnerPollEntry {
+  meta: PollMeta;
+  voterCount: number;
+}
+
+export async function getPollsByOwner(ownerId: string): Promise<OwnerPollEntry[]> {
   const pollIds = await redis.zrange<string[]>(ownerPollsKey(ownerId), 0, -1, { rev: true });
   if (pollIds.length === 0) return [];
 
   const pipeline = redis.pipeline();
   for (const id of pollIds) {
     pipeline.hgetall(pollKey(id));
-    pipeline.lrange(votesKey(id), 0, -1);
+    pipeline.llen(votesKey(id));
   }
   const results = await pipeline.exec();
 
-  const polls: Poll[] = [];
+  const entries: OwnerPollEntry[] = [];
   for (let i = 0; i < pollIds.length; i++) {
-    const meta = results[i * 2] as PollHash | null;
-    const rawVotes = results[i * 2 + 1] as string[] | null;
-    if (meta && meta.question) {
-      polls.push(assemblePoll(pollIds[i], meta, rawVotes ?? []));
+    const hash = results[i * 2] as PollHash | null;
+    const count = results[i * 2 + 1] as number;
+    if (hash && hash.question) {
+      entries.push({ meta: assemblePollMeta(pollIds[i], hash), voterCount: count });
     }
   }
-  return polls;
+  return entries;
+}
+
+export async function getVotesForPoll(pollId: string): Promise<Vote[]> {
+  const raw = await redis.lrange<string>(votesKey(pollId), 0, -1);
+  return raw.map((v) => JSON.parse(v) as Vote);
 }

@@ -130,7 +130,7 @@ export async function closePollAction(
   const storeResult = await closePoll(pollId, session.user.id);
 
   if (!storeResult.success) {
-    return { success: false, code: storeResult.code === "not_found" ? "not_found" : "forbidden", error: storeResult.error };
+    return { success: false, code: storeResult.code, error: storeResult.error };
   }
 
   return { success: true, data: { closed: true } };

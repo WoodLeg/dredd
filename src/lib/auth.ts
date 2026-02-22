@@ -49,8 +49,11 @@ export const auth = betterAuth({
   },
 
   // Credentials login for E2E testing and preview deployments
+  // Double guard: VERCEL_ENV blocks production even if ENABLE_TEST_AUTH leaks.
+  // Falls back to NODE_ENV for non-Vercel environments (local dev).
   emailAndPassword: {
     enabled:
+      (process.env.VERCEL_ENV ?? process.env.NODE_ENV) !== "production" &&
       process.env.ENABLE_TEST_AUTH === "true",
   },
 

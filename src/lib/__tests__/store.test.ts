@@ -54,6 +54,13 @@ function createPipelineMock() {
       });
       return pipelineMethods;
     },
+    llen: (key: string) => {
+      queue.push(() => {
+        if (!data.has(key)) return 0;
+        return getList(key).length;
+      });
+      return pipelineMethods;
+    },
     zadd: (key: string, entry: { score: number; member: string }) => {
       queue.push(() => {
         const ss = getSortedSet(key);
@@ -184,7 +191,7 @@ const {
   getPoll,
   getPollMeta,
   getPollsByOwner,
-  validateOwner,
+  getVotesForPoll,
   addVote,
   setCachedResults,
   getCachedResults,
@@ -256,24 +263,6 @@ describe("getPollMeta", () => {
 
   it("returns undefined for non-existent poll", async () => {
     expect(await getPollMeta("non-existent")).toBeUndefined();
-  });
-});
-
-describe("validateOwner", () => {
-  beforeEach(async () => {
-    await createPoll(makePoll());
-  });
-
-  it("returns true for correct owner", async () => {
-    expect(await validateOwner("test-poll", "owner-user-id")).toBe(true);
-  });
-
-  it("returns false for wrong owner", async () => {
-    expect(await validateOwner("test-poll", "wrong-user-id")).toBe(false);
-  });
-
-  it("returns false for non-existent poll", async () => {
-    expect(await validateOwner("non-existent", "owner-user-id")).toBe(false);
   });
 });
 
@@ -357,7 +346,7 @@ describe("setCachedResults", () => {
 });
 
 describe("getPollsByOwner", () => {
-  it("returns polls owned by the given user sorted by createdAt desc", async () => {
+  it("returns poll metadata with voter counts sorted by createdAt desc", async () => {
     await createPoll(makePoll({ id: "old", createdAt: 1000, ownerId: "user-a" }));
     await createPoll(makePoll({ id: "mid", createdAt: 2000, ownerId: "user-a" }));
     await createPoll(makePoll({ id: "new", createdAt: 3000, ownerId: "user-a" }));
@@ -365,7 +354,8 @@ describe("getPollsByOwner", () => {
 
     const result = await getPollsByOwner("user-a");
     expect(result).toHaveLength(3);
-    expect(result.map((p) => p.id)).toEqual(["new", "mid", "old"]);
+    expect(result.map((e) => e.meta.id)).toEqual(["new", "mid", "old"]);
+    expect(result[0].voterCount).toBe(0);
   });
 
   it("returns empty array for unknown owner", async () => {
@@ -375,6 +365,23 @@ describe("getPollsByOwner", () => {
 
   it("returns empty array when no polls exist", async () => {
     expect(await getPollsByOwner("anyone")).toEqual([]);
+  });
+});
+
+describe("getVotesForPoll", () => {
+  it("returns votes for a poll", async () => {
+    await createPoll(makePoll());
+    await addVote("test-poll", makeVote("voter-1"));
+    await addVote("test-poll", makeVote("voter-2"));
+    const votes = await getVotesForPoll("test-poll");
+    expect(votes).toHaveLength(2);
+    expect(votes[0].voterId).toBe("voter-1");
+    expect(votes[1].voterId).toBe("voter-2");
+  });
+
+  it("returns empty array for poll with no votes", async () => {
+    await createPoll(makePoll());
+    expect(await getVotesForPoll("test-poll")).toEqual([]);
   });
 });
 
