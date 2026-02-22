@@ -26,6 +26,7 @@ export const auth = betterAuth({
       enabled: true,
       maxAge: 60 * 60 * 24,
       strategy: "jwe",
+      refreshCache: false,
     },
   },
 
