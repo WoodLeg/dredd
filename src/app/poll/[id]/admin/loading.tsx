@@ -1,5 +1,10 @@
-import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { CinematicLoader } from "@/components/ui/cinematic-loader";
 
 export default function Loading() {
-  return <PageSkeleton />;
+  return (
+    <CinematicLoader
+      status="Accès au tribunal..."
+      detail="Vérification des accréditations"
+    />
+  );
 }
