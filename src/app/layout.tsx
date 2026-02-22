@@ -16,7 +16,12 @@ const orbitron = Orbitron({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3999"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL
+    ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+    ?? "http://localhost:3999"
+  ),
   title: "Dredd — Tribunal de Mega-City One",
   description: "Système judiciaire de Mega-City One. Soumettez vos litiges au Jugement Majoritaire — la mention médiane fait loi.",
 };
