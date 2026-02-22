@@ -99,8 +99,8 @@ export function DashboardPageClient({ polls }: { polls: DashboardPollData[] }) {
               data-testid="dashboard-poll-card"
               className="hud-card hover:scale-[1.01] transition-transform"
               style={{
-                ["--hud-border" as string]: poll.isClosed ? "rgba(255,0,64,0.3)" : "rgba(0,240,255,0.3)",
-                ["--hud-bg" as string]: "var(--color-surface)",
+                "--hud-border": poll.isClosed ? "rgba(255,0,64,0.3)" : "rgba(0,240,255,0.3)",
+                "--hud-bg": "var(--color-surface)",
               }}
             >
               <Link
