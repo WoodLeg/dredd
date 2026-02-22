@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
 import { useDreddFeedback } from "@/lib/dredd-feedback-context";
@@ -37,13 +37,24 @@ export function DashboardPageClient({ polls }: { polls: DashboardPollData[] }) {
   const { showDredd } = useDreddFeedback();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(polls.length === 0);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   async function handleCopy(pollId: string) {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/poll/${pollId}`);
       showDredd({ message: "Coordonnées sécurisées transmises", variant: "success", autoDismissMs: 2000 });
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       setCopiedId(pollId);
-      setTimeout(() => setCopiedId(null), 2000);
+      copyTimerRef.current = setTimeout(() => {
+        setCopiedId(null);
+        copyTimerRef.current = null;
+      }, 2000);
     } catch {
       showDredd({ message: "Échec de la transmission", variant: "error", autoDismissMs: 2000 });
     }
