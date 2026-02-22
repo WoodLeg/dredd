@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
+import { redis } from "./redis";
 
 function resolveBaseURL(): string {
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
@@ -30,6 +31,20 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+  },
+
+  secondaryStorage: {
+    get: async (key) => await redis.get(`auth:${key}`),
+    set: async (key, value, ttl) => {
+      if (ttl) {
+        await redis.set(`auth:${key}`, value, { ex: ttl });
+      } else {
+        await redis.set(`auth:${key}`, value);
+      }
+    },
+    delete: async (key) => {
+      await redis.del(`auth:${key}`);
     },
   },
 

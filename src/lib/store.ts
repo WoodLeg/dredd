@@ -1,33 +1,126 @@
+import { redis } from "./redis";
+import { ADD_VOTE_SCRIPT, CLOSE_POLL_SCRIPT } from "./redis-scripts";
 import type { Poll, PollResults, Vote } from "./types";
 
-const MAX_POLLS = 10_000;
 const MAX_VOTES_PER_POLL = 500;
 
-// Persist the polls Map across Turbopack hot reloads in development.
-const globalForStore = globalThis as unknown as { polls?: Map<string, Poll> };
-const polls = globalForStore.polls ?? new Map<string, Poll>();
-globalForStore.polls = polls;
+// --- Key helpers ---
+
+function pollKey(id: string): string { return `poll:${id}`; }
+function votesKey(id: string): string { return `poll:${id}:votes`; }
+function votersKey(id: string): string { return `poll:${id}:voters`; }
+function resultsKey(id: string): string { return `poll:${id}:results`; }
+function ownerPollsKey(ownerId: string): string { return `owner:${ownerId}:polls`; }
+
+// --- Serialization helpers ---
+
+interface PollHash {
+  question: string;
+  candidates: string;
+  ownerId: string;
+  ownerDisplayName: string;
+  createdAt: string;
+  isClosed: string;
+  closedAt?: string;
+  [key: string]: unknown;
+}
+
+function serializeVote(vote: Vote): string {
+  return JSON.stringify(vote);
+}
+
+function deserializeVote(raw: string): Vote {
+  return JSON.parse(raw) as Vote;
+}
+
+function assemblePoll(id: string, meta: PollHash, votes: string[]): Poll {
+  return {
+    id,
+    question: meta.question,
+    candidates: JSON.parse(meta.candidates) as string[],
+    votes: votes.map(deserializeVote),
+    createdAt: Number(meta.createdAt),
+    ownerId: meta.ownerId,
+    ownerDisplayName: meta.ownerDisplayName,
+    isClosed: meta.isClosed === "true",
+    closedAt: meta.closedAt ? Number(meta.closedAt) : undefined,
+  };
+}
+
+// --- Lightweight metadata type (no votes loaded) ---
+
+export interface PollMeta {
+  id: string;
+  question: string;
+  candidates: string[];
+  ownerId: string;
+  ownerDisplayName: string;
+  createdAt: number;
+  isClosed: boolean;
+  closedAt?: number;
+}
+
+function assemblePollMeta(id: string, meta: PollHash): PollMeta {
+  return {
+    id,
+    question: meta.question,
+    candidates: JSON.parse(meta.candidates) as string[],
+    ownerId: meta.ownerId,
+    ownerDisplayName: meta.ownerDisplayName,
+    createdAt: Number(meta.createdAt),
+    isClosed: meta.isClosed === "true",
+    closedAt: meta.closedAt ? Number(meta.closedAt) : undefined,
+  };
+}
+
+// --- Store functions ---
 
 export type CreatePollResult =
   | { poll: Poll; error?: undefined }
   | { poll?: undefined; error: string };
 
-export function createPoll(poll: Poll): CreatePollResult {
-  if (polls.size >= MAX_POLLS) {
-    return { error: "Capacité maximale du Tribunal atteinte" };
-  }
-  polls.set(poll.id, poll);
+export async function createPoll(poll: Poll): Promise<CreatePollResult> {
+  const pipeline = redis.pipeline();
+  pipeline.hset(pollKey(poll.id), {
+    question: poll.question,
+    candidates: JSON.stringify(poll.candidates),
+    ownerId: poll.ownerId,
+    ownerDisplayName: poll.ownerDisplayName,
+    createdAt: String(poll.createdAt),
+    isClosed: String(poll.isClosed),
+  });
+  pipeline.zadd(ownerPollsKey(poll.ownerId), {
+    score: poll.createdAt,
+    member: poll.id,
+  });
+  await pipeline.exec();
   return { poll };
 }
 
-export function getPoll(id: string): Poll | undefined {
-  return polls.get(id);
+export async function getPoll(id: string): Promise<Poll | undefined> {
+  const meta = await redis.hgetall<PollHash>(pollKey(id));
+  if (!meta || !meta.question) return undefined;
+  const rawVotes = await redis.lrange<string>(votesKey(id), 0, -1);
+  return assemblePoll(id, meta, rawVotes);
 }
 
-export function validateOwner(pollId: string, userId: string): boolean {
-  const poll = polls.get(pollId);
-  if (!poll) return false;
-  return poll.ownerId === userId;
+export async function getPollMeta(id: string): Promise<PollMeta | undefined> {
+  const meta = await redis.hgetall<PollHash>(pollKey(id));
+  if (!meta || !meta.question) return undefined;
+  return assemblePollMeta(id, meta);
+}
+
+export async function getVoterCount(id: string): Promise<number> {
+  return await redis.llen(votesKey(id));
+}
+
+export async function hasVoted(pollId: string, voterId: string): Promise<boolean> {
+  return await redis.sismember(votersKey(pollId), voterId) === 1;
+}
+
+export async function validateOwner(pollId: string, userId: string): Promise<boolean> {
+  const ownerId = await redis.hget<string>(pollKey(pollId), "ownerId");
+  return ownerId === userId;
 }
 
 export type AddVoteError = "not_found" | "capacity" | "closed" | "duplicate_vote";
@@ -36,29 +129,38 @@ export type AddVoteResult =
   | { success: true }
   | { success: false; error: string; code: AddVoteError };
 
-export function addVote(pollId: string, vote: Vote): AddVoteResult {
-  const poll = polls.get(pollId);
-  if (!poll) return { success: false, error: "Dossier introuvable dans les archives", code: "not_found" };
+const ADD_VOTE_ERROR_MESSAGES: Record<string, string> = {
+  not_found: "Dossier introuvable dans les archives",
+  closed: "Audience clôturée — aucune déposition acceptée",
+  capacity: "Nombre maximal de dépositions atteint pour ce dossier",
+  duplicate_vote: "Déposition déjà enregistrée sous ce matricule",
+};
 
-  if (poll.votes.length >= MAX_VOTES_PER_POLL) {
-    return { success: false, error: "Nombre maximal de dépositions atteint pour ce dossier", code: "capacity" };
-  }
+export async function addVote(pollId: string, vote: Vote): Promise<AddVoteResult> {
+  const result = await redis.eval(
+    ADD_VOTE_SCRIPT,
+    [pollKey(pollId), votersKey(pollId), votesKey(pollId), resultsKey(pollId)],
+    [vote.voterId, serializeVote(vote), String(MAX_VOTES_PER_POLL)]
+  ) as [number, string];
 
-  if (poll.isClosed) return { success: false, error: "Audience clôturée — aucune déposition acceptée", code: "closed" };
+  const [status, code] = result;
+  if (status === 1) return { success: true };
 
-  const alreadyVoted = poll.votes.some((v) => v.voterId === vote.voterId);
-  if (alreadyVoted) return { success: false, error: "Déposition déjà enregistrée sous ce matricule", code: "duplicate_vote" };
-
-  poll.votes.push(vote);
-  poll.cachedResults = undefined;
-  return { success: true };
+  return {
+    success: false,
+    error: ADD_VOTE_ERROR_MESSAGES[code] ?? "Erreur inconnue",
+    code: code as AddVoteError,
+  };
 }
 
-export function setCachedResults(pollId: string, results: PollResults): void {
-  const poll = polls.get(pollId);
-  if (poll && !poll.cachedResults) {
-    poll.cachedResults = results;
-  }
+export async function setCachedResults(pollId: string, results: PollResults): Promise<void> {
+  await redis.set(resultsKey(pollId), JSON.stringify(results), { nx: true });
+}
+
+export async function getCachedResults(pollId: string): Promise<PollResults | undefined> {
+  const raw = await redis.get<string>(resultsKey(pollId));
+  if (!raw) return undefined;
+  return JSON.parse(raw) as PollResults;
 }
 
 export type ClosePollError = "not_found" | "forbidden" | "already_closed";
@@ -67,27 +169,47 @@ export type ClosePollResult =
   | { success: true }
   | { success: false; error: string; code: ClosePollError };
 
-export function closePoll(pollId: string, userId: string): ClosePollResult {
-  const poll = polls.get(pollId);
-  if (!poll) return { success: false, error: "Dossier introuvable dans les archives", code: "not_found" };
-  if (poll.ownerId !== userId) {
-    return { success: false, error: "Identification Juge en Chef invalide", code: "forbidden" };
-  }
-  if (poll.isClosed) return { success: false, error: "Audience déjà clôturée", code: "already_closed" };
-  poll.isClosed = true;
-  poll.closedAt = Date.now();
-  return { success: true };
+const CLOSE_POLL_ERROR_MESSAGES: Record<string, string> = {
+  not_found: "Dossier introuvable dans les archives",
+  forbidden: "Identification Juge en Chef invalide",
+  already_closed: "Audience déjà clôturée",
+};
+
+export async function closePoll(pollId: string, userId: string): Promise<ClosePollResult> {
+  const result = await redis.eval(
+    CLOSE_POLL_SCRIPT,
+    [pollKey(pollId)],
+    [userId, String(Date.now())]
+  ) as [number, string];
+
+  const [status, code] = result;
+  if (status === 1) return { success: true };
+
+  return {
+    success: false,
+    error: CLOSE_POLL_ERROR_MESSAGES[code] ?? "Erreur inconnue",
+    code: code as ClosePollError,
+  };
 }
 
-export function getPollsByOwner(ownerId: string): Poll[] {
-  const owned: Poll[] = [];
-  for (const poll of polls.values()) {
-    if (poll.ownerId === ownerId) owned.push(poll);
-  }
-  owned.sort((a, b) => b.createdAt - a.createdAt);
-  return owned;
-}
+export async function getPollsByOwner(ownerId: string): Promise<Poll[]> {
+  const pollIds = await redis.zrange<string[]>(ownerPollsKey(ownerId), 0, -1, { rev: true });
+  if (pollIds.length === 0) return [];
 
-export function _resetForTesting(): void {
-  polls.clear();
+  const pipeline = redis.pipeline();
+  for (const id of pollIds) {
+    pipeline.hgetall(pollKey(id));
+    pipeline.lrange(votesKey(id), 0, -1);
+  }
+  const results = await pipeline.exec();
+
+  const polls: Poll[] = [];
+  for (let i = 0; i < pollIds.length; i++) {
+    const meta = results[i * 2] as PollHash | null;
+    const rawVotes = results[i * 2 + 1] as string[] | null;
+    if (meta && meta.question) {
+      polls.push(assemblePoll(pollIds[i], meta, rawVotes ?? []));
+    }
+  }
+  return polls;
 }
