@@ -329,7 +329,7 @@ export default function LeCodePage() {
               </div>
             </div>
             <div className="flex justify-center">
-              <Button href="/" size="lg">
+              <Button href="/dashboard" size="lg">
                 Ouvrir une audience
               </Button>
             </div>

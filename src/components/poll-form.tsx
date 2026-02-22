@@ -54,7 +54,7 @@ export function PollForm() {
     return (
       <div className="flex flex-col gap-4 items-center text-center">
         <p className="text-muted">Session expirée. Reconnectez-vous, citoyen.</p>
-        <Button href="/login?callbackUrl=/" size="lg">
+        <Button href="/login?callbackUrl=/dashboard" size="lg">
           Se reconnecter
         </Button>
       </div>

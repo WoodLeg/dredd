@@ -5,9 +5,9 @@ test.describe("Golden path — full voting journey", () => {
   test("create poll, vote, close, and view results", async ({ page }) => {
     test.setTimeout(60_000);
     // -------------------------------------------------------
-    // 1. Navigate to home page
+    // 1. Navigate to dashboard (poll creation hub)
     // -------------------------------------------------------
-    await page.goto("/");
+    await page.goto("/dashboard");
 
     // -------------------------------------------------------
     // 2. Create a poll with 3 candidates

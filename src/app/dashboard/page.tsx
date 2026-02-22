@@ -4,7 +4,6 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getPollsByOwner, getVotesForPoll, getCachedResults, setCachedResults } from "@/lib/store";
 import { computeResults } from "@/lib/majority-judgment";
-import { DreddFullPage } from "@/components/ui/dredd-full-page";
 import { DashboardPageClient } from "./dashboard-page-client";
 import type { DashboardPollData, PollResults } from "@/lib/types";
 
@@ -21,18 +20,6 @@ export default async function DashboardPage() {
   }
 
   const entries = await getPollsByOwner(session.user.id);
-
-  if (entries.length === 0) {
-    return (
-      <ViewTransition>
-        <DreddFullPage
-          message="Aucun dossier enregistré"
-          description="Votre casier judiciaire est vierge. Ouvrez votre première audience."
-          action={{ label: "Ouvrir un dossier", href: "/" }}
-        />
-      </ViewTransition>
-    );
-  }
 
   const dashboardPolls: DashboardPollData[] = await Promise.all(
     entries.map(async ({ meta, voterCount }) => {
