@@ -1,0 +1,253 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Foundations — Mega-City terminal */
+  --color-background: #08080c;
+  --color-foreground: #e0e8f0;
+  --color-surface: #0d1117;
+  --color-surface-light: #161b26;
+  --color-border: #1a2a3a;
+  --color-muted: #5a7a8a;
+
+  /* Neon — primary interface */
+  --color-neon-cyan: #00f0ff;
+  --color-neon-magenta: #ff2d7b;
+
+  /* Authority — Judge uniform */
+  --color-primary: #b5241a;
+  --color-primary-hover: #d43025;
+  --color-secondary: #c4941e;
+  --color-secondary-hover: #daa520;
+
+  /* Mega-City neon — cityscape accents */
+  --color-accent-violet: #8b3fa0;
+  --color-accent-green: #3a7d32;
+  --color-accent-blue: #1e6ea1;
+  --color-accent-orange: #d47b1e;
+
+  /* Grade neon spectrum — cyan → green → amber → red → magenta */
+  --color-grade-exemplaire: #00f0ff;
+  --color-grade-honorable: #2ee89e;
+  --color-grade-acceptable: #a8e040;
+  --color-grade-tolerable: #f0c030;
+  --color-grade-suspect: #f06828;
+  --color-grade-coupable: #e82850;
+  --color-grade-condamne: #ff2d7b;
+
+  /* Legacy functional aliases */
+  --color-grade-excellent: #00f0ff;
+  --color-grade-a-rejeter: #ff2d7b;
+
+  --font-sans: var(--font-geist-sans);
+  --font-heading: var(--font-orbitron);
+}
+
+body {
+  background:
+    /* Radial vignette — monitor glow, lighter center */
+    radial-gradient(
+      ellipse at 50% 40%,
+      rgba(0, 240, 255, 0.03) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(8, 8, 12, 0) 30%,
+      rgba(0, 0, 0, 0.6) 100%
+    ),
+    /* Subtle HUD grid */
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    var(--color-background);
+  background-size:
+    100% 100%,
+    100% 100%,
+    48px 48px,
+    48px 48px;
+  background-attachment: fixed;
+  color: var(--color-foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-light) transparent;
+}
+
+/* ─── Scan line overlay ─── */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  animation: scan-drift 20s linear infinite;
+  will-change: transform;
+}
+
+@keyframes scan-drift {
+  from { transform: translateY(0); }
+  to { transform: translateY(4px); }
+}
+
+/* ─── Angular HUD cards with proper border ─── */
+/* Uses two pseudo-elements: ::after (border) and ::before (background).
+   Set --hud-bg and --hud-border via inline style to customise. */
+.hud-card {
+  position: relative;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.hud-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--hud-bg, var(--color-surface));
+  clip-path: polygon(
+    0 12px, 12px 0, 100% 0, 100% calc(100% - 12px),
+    calc(100% - 12px) 100%, 0 100%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+.hud-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: var(--hud-border, var(--color-border));
+  clip-path: polygon(
+    0 12px, 12px 0, 100% 0, 100% calc(100% - 12px),
+    calc(100% - 12px) 100%, 0 100%
+  );
+  z-index: -2;
+  pointer-events: none;
+}
+
+/* Simple clip-only variant (no border handling, for bars etc.) */
+.hud-clip {
+  clip-path: polygon(
+    0 12px, 12px 0, 100% 0, 100% calc(100% - 12px),
+    calc(100% - 12px) 100%, 0 100%
+  );
+}
+
+/* ─── Glitch title effect ─── */
+.glitch-title {
+  position: relative;
+  display: inline-block;
+}
+.glitch-title::before,
+.glitch-title::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.glitch-title::before {
+  color: #00f0ff;
+  animation: glitch-1 3s infinite;
+  clip-path: inset(0 0 65% 0);
+}
+.glitch-title::after {
+  color: #ff2d7b;
+  animation: glitch-2 3s infinite;
+  clip-path: inset(65% 0 0 0);
+}
+
+@keyframes glitch-1 {
+  0%, 95%, 100% { transform: translate(0); }
+  96% { transform: translate(-2px, 1px); }
+  97% { transform: translate(2px, -1px); }
+}
+@keyframes glitch-2 {
+  0%, 95%, 100% { transform: translate(0); }
+  96% { transform: translate(2px, -1px); }
+  98% { transform: translate(-2px, 1px); }
+}
+
+/* ─── Neon pulse for grade buttons ─── */
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 8px var(--glow-color, rgba(0, 240, 255, 0.4)); }
+  50% { box-shadow: 0 0 16px var(--glow-color, rgba(0, 240, 255, 0.4)), 0 0 24px var(--glow-color, rgba(0, 240, 255, 0.2)); }
+}
+
+/* ─── CRT flicker on hover ─── */
+.crt-flicker:hover {
+  animation: crt-flicker 0.15s ease-in-out;
+}
+
+@keyframes crt-flicker {
+  0% { opacity: 1; }
+  25% { opacity: 0.97; }
+  50% { opacity: 1; }
+  75% { opacity: 0.98; }
+  100% { opacity: 1; }
+}
+
+/* ─── Entrance animations ─── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out both;
+}
+
+/* Scale-in for trophy icon */
+@keyframes scale-in {
+  from { transform: scale(0); }
+  to { transform: scale(1); }
+}
+
+/* Bar width transition for results chart */
+.bar-animate {
+  transition: width 0.6s ease-out;
+}
+
+/* ─── View Transition cross-fade ─── */
+::view-transition-old(root) {
+  animation: vt-fade-out 250ms ease-out both;
+}
+
+::view-transition-new(root) {
+  animation: vt-fade-in 250ms ease-in both;
+}
+
+@keyframes vt-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ─── prefers-reduced-motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    animation: none;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
