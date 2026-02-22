@@ -14,14 +14,16 @@ function ownerPollsKey(ownerId: string): string { return `owner:${ownerId}:polls
 
 // --- Types & assembly ---
 
+// Upstash auto-deserializes JSON values on read, so fields stored as
+// JSON.stringify/String() come back as their parsed types (array, number, boolean).
 interface PollHash {
   question: string;
-  candidates: string;
+  candidates: string[];
   ownerId: string;
   ownerDisplayName: string;
-  createdAt: string;
-  isClosed: string;
-  closedAt?: string;
+  createdAt: number;
+  isClosed: boolean;
+  closedAt?: number;
   [key: string]: unknown;
 }
 
@@ -40,19 +42,19 @@ function assemblePollMeta(id: string, meta: PollHash): PollMeta {
   return {
     id,
     question: meta.question,
-    candidates: JSON.parse(meta.candidates) as string[],
+    candidates: meta.candidates,
     ownerId: meta.ownerId,
     ownerDisplayName: meta.ownerDisplayName,
-    createdAt: Number(meta.createdAt),
-    isClosed: meta.isClosed === "true",
-    closedAt: meta.closedAt ? Number(meta.closedAt) : undefined,
+    createdAt: meta.createdAt,
+    isClosed: meta.isClosed,
+    closedAt: meta.closedAt,
   };
 }
 
-function assemblePoll(id: string, meta: PollHash, votes: string[]): Poll {
+function assemblePoll(id: string, meta: PollHash, votes: Vote[]): Poll {
   return {
     ...assemblePollMeta(id, meta),
-    votes: votes.map((v) => JSON.parse(v) as Vote),
+    votes,
   };
 }
 
@@ -88,9 +90,9 @@ export async function getPoll(id: string): Promise<Poll | undefined> {
   const pipe = redis.pipeline();
   pipe.hgetall(pollKey(id));
   pipe.lrange(votesKey(id), 0, -1);
-  const [meta, rawVotes] = (await pipe.exec()) as [PollHash | null, string[]];
+  const [meta, votes] = (await pipe.exec()) as [PollHash | null, Vote[]];
   if (!meta || !meta.question) return undefined;
-  return assemblePoll(id, meta, rawVotes ?? []);
+  return assemblePoll(id, meta, votes ?? []);
 }
 
 export async function getPollMeta(id: string): Promise<PollMeta | undefined> {
@@ -143,9 +145,8 @@ export async function setCachedResults(pollId: string, results: PollResults): Pr
 }
 
 export async function getCachedResults(pollId: string): Promise<PollResults | undefined> {
-  const raw = await redis.get<string>(resultsKey(pollId));
-  if (!raw) return undefined;
-  return JSON.parse(raw) as PollResults;
+  const raw = await redis.get<PollResults>(resultsKey(pollId));
+  return raw ?? undefined;
 }
 
 export type ClosePollError = "not_found" | "forbidden" | "already_closed";
@@ -206,6 +207,5 @@ export async function getPollsByOwner(ownerId: string): Promise<OwnerPollEntry[]
 }
 
 export async function getVotesForPoll(pollId: string): Promise<Vote[]> {
-  const raw = await redis.lrange<string>(votesKey(pollId), 0, -1);
-  return raw.map((v) => JSON.parse(v) as Vote);
+  return await redis.lrange<Vote>(votesKey(pollId), 0, -1);
 }

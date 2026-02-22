@@ -2,8 +2,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { Poll, Vote, PollResults } from "../types";
 
 // --- In-memory Redis mock ---
+// Simulates @upstash/redis auto-deserialization: values stored as strings
+// in Redis are JSON.parsed on read (arrays, numbers, booleans get deserialized).
 
 const data = new Map<string, unknown>();
+
+function autoDeserialize(v: string): unknown {
+  try { return JSON.parse(v); } catch { return v; }
+}
 
 function keyExists(key: string): boolean {
   return data.has(key);
@@ -11,6 +17,12 @@ function keyExists(key: string): boolean {
 
 function getHash(key: string): Record<string, string> {
   return (data.get(key) as Record<string, string>) ?? {};
+}
+
+function deserializeHash(hash: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(hash)) out[k] = autoDeserialize(v);
+  return out;
 }
 
 function getList(key: string): string[] {
@@ -43,14 +55,15 @@ function createPipelineMock() {
       queue.push(() => {
         if (!data.has(key)) return null;
         const val = data.get(key) as Record<string, string>;
-        return Object.keys(val).length === 0 ? null : val;
+        if (Object.keys(val).length === 0) return null;
+        return deserializeHash(val);
       });
       return pipelineMethods;
     },
     lrange: (key: string, _start: number, _end: number) => {
       queue.push(() => {
         if (!data.has(key)) return [];
-        return [...getList(key)];
+        return getList(key).map(autoDeserialize);
       });
       return pipelineMethods;
     },
@@ -133,7 +146,8 @@ const mockRedis = {
   hgetall: vi.fn(async (key: string) => {
     if (!data.has(key)) return null;
     const val = data.get(key) as Record<string, string>;
-    return Object.keys(val).length === 0 ? null : val;
+    if (Object.keys(val).length === 0) return null;
+    return deserializeHash(val);
   }),
   hget: vi.fn(async (key: string, field: string) => {
     const hash = getHash(key);
@@ -141,7 +155,7 @@ const mockRedis = {
   }),
   lrange: vi.fn(async (key: string, _start: number, _end: number) => {
     if (!data.has(key)) return [];
-    return [...getList(key)];
+    return getList(key).map(autoDeserialize);
   }),
   llen: vi.fn(async (key: string) => {
     if (!data.has(key)) return 0;
@@ -170,7 +184,9 @@ const mockRedis = {
     return "OK";
   }),
   get: vi.fn(async (key: string) => {
-    return data.get(key) ?? null;
+    const val = data.get(key);
+    if (val === undefined) return null;
+    return typeof val === "string" ? autoDeserialize(val) : val;
   }),
   del: vi.fn(async (key: string) => {
     data.delete(key);
