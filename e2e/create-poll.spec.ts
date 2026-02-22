@@ -4,7 +4,7 @@ test.describe("Poll creation", () => {
   test("happy path — creates a poll and redirects to admin page", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/dashboard");
 
     // Fill the question
     await page
@@ -29,7 +29,7 @@ test.describe("Poll creation", () => {
   });
 
   test("add and remove candidates", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/dashboard");
 
     // Initially there are 2 candidate inputs
     const addButton = page.getByRole("button", {
@@ -58,7 +58,7 @@ test.describe("Poll creation", () => {
   test("validation — empty question prevents submission", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/dashboard");
 
     // The question input starts empty, so just fill the candidates
     await page.getByPlaceholder("Suspect 1").fill("Candidat A");
@@ -79,9 +79,9 @@ test.describe("Poll creation", () => {
   });
 
   test("validation — duplicate candidates shows error", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/dashboard");
 
-    // Fill the question
+    // Fill the question (form is auto-shown on empty dashboard)
     await page
       .getByPlaceholder("Quel suspect mérite l'acquittement ?")
       .fill("Ma question test");

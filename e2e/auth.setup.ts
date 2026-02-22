@@ -17,7 +17,7 @@ setup("authenticate test user", async ({ page, request }) => {
   await page.click('button[type="submit"]');
 
   // Wait for redirect after login
-  await page.waitForURL("http://localhost:3999/");
+  await page.waitForURL("http://localhost:3999/dashboard");
 
   // Save session state
   await page.context().storageState({ path: "e2e/.auth/user.json" });

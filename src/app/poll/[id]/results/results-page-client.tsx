@@ -224,7 +224,7 @@ export function ResultsPageClient({ results, pollId }: ResultsPageClientProps) {
         <div className="border-t border-border pt-6 flex flex-col gap-4">
           <ShareLink pollId={pollId} />
           <Link
-            href="/"
+            href="/dashboard"
             className="text-sm text-muted hover:text-neon-cyan transition-colors text-center"
           >
             Ouvrir un nouveau dossier

@@ -4,14 +4,14 @@ import { auth } from "@/lib/auth";
 import { LoginClient } from "./login-client";
 
 function getSafeCallbackUrl(callbackUrl: string | null): string {
-  if (!callbackUrl) return "/";
+  if (!callbackUrl) return "/dashboard";
   try {
     const base = process.env.BETTER_AUTH_URL ?? "http://localhost:3999";
     const url = new URL(callbackUrl, base);
-    if (url.origin !== new URL(base).origin) return "/";
+    if (url.origin !== new URL(base).origin) return "/dashboard";
     return url.pathname + url.search;
   } catch {
-    return "/";
+    return "/dashboard";
   }
 }
 

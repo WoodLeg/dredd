@@ -86,5 +86,5 @@ export async function loginAsSecondUser(
   await page.fill('[name="email"]', "beta@dredd.test");
   await page.fill('[name="password"]', "mega-city-two");
   await page.click('button[type="submit"]');
-  await page.waitForURL(/\//);
+  await page.waitForURL(/\/dashboard/);
 }
