@@ -99,6 +99,9 @@ export function AdminPanel({
 
       {!isClosed && (
         <div className="flex flex-col gap-2">
+          <Button href={`/poll/${pollId}`} size="lg">
+            Rejoindre l&apos;audience
+          </Button>
           <Button
             variant={confirming ? "primary" : "secondary"}
             size="lg"
