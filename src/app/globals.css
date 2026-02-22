@@ -275,8 +275,7 @@ body::after {
 }
 
 .loader-helmet-glow {
-  animation: loader-helmet-glow 2s ease-in-out infinite;
-  animation-delay: 0.3s;
+  animation: loader-helmet-glow 2s ease-in-out 0.3s infinite;
 }
 
 .loader-text-reveal {
@@ -288,8 +287,8 @@ body::after {
 }
 
 .loader-cursor {
-  animation: loader-cursor-blink 0.8s steps(1) infinite;
-  animation-delay: 0.8s;
+  /* No fill-mode — cursor is decorative, stays hidden under prefers-reduced-motion */
+  animation: loader-cursor-blink 0.8s steps(1) 0.8s infinite;
   opacity: 0;
 }
 
@@ -299,8 +298,7 @@ body::after {
 }
 
 .loader-bar-sweep {
-  animation: loader-bar-sweep 1.5s linear infinite;
-  animation-delay: 0.7s;
+  animation: loader-bar-sweep 1.5s linear 0.7s infinite;
 }
 
 /* ─── prefers-reduced-motion ─── */
